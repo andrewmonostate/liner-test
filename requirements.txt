@@ -1,5 +1,5 @@
-agno>=2.2.10
-google-genai>=1.0.0
-google-generativeai>=0.8.3
-streamlit>=1.40.2
-python-dotenv>=1.0.0
+streamlit==1.40.2
+agno==2.3.4
+google-genai==1.52.0
+google-generativeai==0.8.5
+python-dotenv==1.2.1

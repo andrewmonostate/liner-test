@@ -1,7 +1,6 @@
 # Lincer Agent - Lincehub app para vistorias
-# Configure a variavel de ambiente GEMINI_API_KEY antes de executar:
-#   export GEMINI_API_KEY=sua_chave_api_aqui
-# Execute com: streamlit run mutimodal_agent.py
+# Configure GEMINI_API_KEY nos secrets do Streamlit Cloud ou como variavel de ambiente
+# Execute com: streamlit run app.py
 
 import streamlit as st
 from agno.agent import Agent
@@ -19,6 +18,16 @@ st.set_page_config(
     page_icon="L",
     layout="wide"
 )
+
+# Obtem chave API do secrets ou variavel de ambiente
+def get_api_key() -> str:
+    """Obtem a chave API do Gemini dos secrets ou variavel de ambiente."""
+    try:
+        return st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        return os.environ.get("GEMINI_API_KEY", "")
+
+GEMINI_API_KEY = get_api_key()
 
 # Prompts especificos por perfil de vistoria
 PROFILE_PROMPTS = {
@@ -116,7 +125,6 @@ IMPORTANTE:
 
 def parse_json_response(response_text: str) -> dict | None:
     """Extrai e analisa JSON da resposta do Gemini."""
-    # Tenta encontrar bloco JSON em code fence markdown
     json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', response_text)
     if json_match:
         try:
@@ -124,13 +132,11 @@ def parse_json_response(response_text: str) -> dict | None:
         except json.JSONDecodeError:
             pass
     
-    # Tenta analisar a resposta inteira como JSON
     try:
         return json.loads(response_text)
     except json.JSONDecodeError:
         pass
     
-    # Tenta encontrar objeto JSON na resposta
     json_match = re.search(r'\{[\s\S]*\}', response_text)
     if json_match:
         try:
@@ -190,28 +196,13 @@ def get_risk_color(risk_level: str) -> str:
 st.title("Lincer Agent")
 st.markdown("*Lincehub - Analise de vistorias com IA para Construcao, Varejo e Industria*")
 
+# Verifica se a API key esta configurada
+if not GEMINI_API_KEY:
+    st.error("Chave API Gemini nao configurada. Configure GEMINI_API_KEY nos secrets do Streamlit ou como variavel de ambiente.")
+    st.stop()
+
 # Configuracao na barra lateral
 with st.sidebar:
-    st.header("Configuracao")
-    
-    # Tenta obter chave da API do Streamlit secrets primeiro, depois da variavel de ambiente
-    default_api_key = ""
-    try:
-        default_api_key = st.secrets.get("GEMINI_API_KEY", "")
-    except Exception:
-        pass
-    if not default_api_key:
-        default_api_key = os.environ.get("GEMINI_API_KEY", "")
-    
-    gemini_api_key = st.text_input(
-        "Chave API Gemini", 
-        value=default_api_key,
-        type="password",
-        help="Configure a variavel GEMINI_API_KEY ou insira aqui"
-    )
-    st.caption("[Obter chave API no Google AI Studio](https://aistudio.google.com/apikey)")
-    
-    st.divider()
     st.header("Configuracoes da Vistoria")
     
     profile = st.selectbox(
@@ -244,22 +235,18 @@ with col1:
 with col2:
     st.subheader("Resultados da Analise")
     
-    if not gemini_api_key:
-        st.warning("Por favor, insira sua chave API Gemini na barra lateral para continuar.")
-    elif not uploaded_file:
+    if not uploaded_file:
         st.info("Envie um arquivo de video para iniciar a analise de vistoria.")
     else:
         analyze_btn = st.button("Analisar Video", type="primary", use_container_width=True)
         
         if analyze_btn:
-            # Inicializa o agente
             agent = Agent(
                 name="Lincer Inspector",
-                model=Gemini(id="gemini-2.5-flash", api_key=gemini_api_key),
+                model=Gemini(id="gemini-2.5-flash", api_key=GEMINI_API_KEY),
                 markdown=True,
             )
             
-            # Salva video em arquivo temporario
             with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp_file:
                 tmp_file.write(uploaded_file.read())
                 video_path = tmp_file.name
@@ -270,7 +257,6 @@ with col2:
                     prompt = build_inspection_prompt(profile, extra_context)
                     result: RunOutput = agent.run(prompt, videos=[video])
                 
-                # Armazena resultados no session state
                 st.session_state['inspection_result'] = result.content
                 st.session_state['parsed_json'] = parse_json_response(result.content)
                 
@@ -284,7 +270,6 @@ if 'inspection_result' in st.session_state:
     parsed = st.session_state.get('parsed_json')
     
     if parsed:
-        # Secao de resumo
         st.divider()
         col_sum, col_risk = st.columns([3, 1])
         
@@ -304,13 +289,11 @@ if 'inspection_result' in st.session_state:
                 </div>
             """, unsafe_allow_html=True)
         
-        # Tabela de problemas
         issues = parsed.get('problemas') or parsed.get('issues', [])
         if issues:
             st.divider()
             st.markdown(f"### Problemas Encontrados ({len(issues)})")
             
-            # Cria dataframe de problemas
             issues_data = []
             for issue in issues:
                 severity = issue.get('severidade') or issue.get('severity', '')
@@ -324,7 +307,6 @@ if 'inspection_result' in st.session_state:
             
             st.dataframe(issues_data, use_container_width=True, hide_index=True)
             
-            # Detalhes expandiveis dos problemas
             with st.expander("Descricoes Detalhadas dos Problemas"):
                 for issue in issues:
                     issue_id = issue.get('id', '')
@@ -338,7 +320,6 @@ if 'inspection_result' in st.session_state:
         else:
             st.success("Nenhum problema encontrado nesta vistoria!")
         
-        # Proximas acoes
         next_actions = parsed.get('proximas_acoes') or parsed.get('next_actions', [])
         if next_actions:
             st.divider()
@@ -353,7 +334,6 @@ if 'inspection_result' in st.session_state:
                 due_days = action.get('prazo_em_dias') or action.get('due_in_days', '?')
                 st.markdown(f"{i}. {priority_text} **{owner}**: {action_text} *(Prazo: {due_days} dias)*")
         
-        # Downloads e dados brutos
         st.divider()
         col_dl1, col_dl2 = st.columns(2)
         
@@ -376,7 +356,6 @@ if 'inspection_result' in st.session_state:
                 use_container_width=True
             )
         
-        # Dados brutos expandiveis
         with st.expander("Resposta JSON Completa"):
             st.json(parsed)
         
@@ -384,7 +363,6 @@ if 'inspection_result' in st.session_state:
             st.text(parsed.get('transcricao_completa') or parsed.get('raw_transcript', 'Transcricao nao disponivel'))
     
     else:
-        # Nao foi possivel analisar JSON - mostra resposta bruta
         st.warning("Nao foi possivel extrair JSON estruturado da resposta. Exibindo saida bruta:")
         st.markdown(st.session_state['inspection_result'])
         
@@ -395,6 +373,5 @@ if 'inspection_result' in st.session_state:
             mime="text/plain"
         )
 
-# Rodape
 st.divider()
 st.caption("Desenvolvido com Streamlit e Google Gemini 2.5 | Lincehub - Analise de vistorias com IA")
