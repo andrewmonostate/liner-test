@@ -8,6 +8,7 @@ from agno.run.agent import RunOutput
 from agno.models.google import Gemini
 from agno.media import Video
 from pathlib import Path
+from typing import Optional
 import tempfile
 import json
 import os
@@ -89,7 +90,7 @@ JSON_SCHEMA = """{
 }"""
 
 
-def build_inspection_prompt(profile: str, extra_context: str | None) -> str:
+def build_inspection_prompt(profile: str, extra_context: Optional[str]) -> str:
     """Constroi o prompt completo de vistoria para o Gemini."""
     profile_instructions = PROFILE_PROMPTS.get(profile, PROFILE_PROMPTS["Construcao"])
     
